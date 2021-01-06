@@ -1,6 +1,4 @@
-# timercam_webcam
-porting of the web_cam example to platformio
-
-* reference : https://github.com/m5stack/TimerCam-arduino/tree/master/examples/web_cam
+# timercam_mqtt
+The time lapse Timer Cam delivering jpg images every wakeup over MQTT
 
 * documentation : https://smartcontrollers.github.io/docs/esp32/fisheye-cam-ov36/
