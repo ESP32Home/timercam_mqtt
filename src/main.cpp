@@ -26,43 +26,14 @@ void timelog(String Text){
 
 
 
-void mqtt_start(DynamicJsonDocument &config){
-  mqtt.begin(config["mqtt"]["host"],config["mqtt"]["port"], wifi);
-  if(mqtt.connect(config["mqtt"]["client_id"])){
-    Serial.println("mqtt>connected");
-  }
-}
-
 void mqtt_publish_config(){
   String str_config;
   serializeJson(config,str_config);
   String str_topic = config["camera"]["base_topic"];
-  mqtt.publish(str_topic+"/config",str_config);
+  mqtt.publish(str_topic+"/config",str_config,true,2);//LWMQTT_QOS2 = 2
   mqtt.loop();
 }
 
-
-void connect() {
-  Serial.print("checking wifi...");
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(100);
-  }
-
-  Serial.print("\nmqtt connecting...");
-  while (!mqtt.connect(config["mqtt"]["client_id"])) {
-    Serial.print(".");
-    delay(100);
-  }
-  Serial.println("\nconnected!");
-}
-
-void mqtt_loop(){
-  mqtt.loop();
-  if (!mqtt.connected()) {
-    connect();
-  }
-}
 
 void camera_start(DynamicJsonDocument &config){
   camera_config_t cam_config;
@@ -111,6 +82,7 @@ void camera_start(DynamicJsonDocument &config){
 void camera_publish(){
   camera_fb_t * frame = NULL;
 
+  Serial.println("esp_camera_fb_get()");
   frame = esp_camera_fb_get();
   if (!frame) {
       Serial.println("Camera capture failed");
@@ -119,11 +91,12 @@ void camera_publish(){
   size_t frame_len = frame->width * frame->height * 3;
   uint16_t width = frame->width;
   uint16_t height = frame->height;
-  uint8_t quality = 90;
-  uint8_t ** jpg_out;
-  size_t * jpg_out_len;
+  uint8_t quality = 50;
+  uint8_t * jpg_out;
+  size_t jpg_out_len;
 
-  bool res = fmt2jpg(frame->buf, frame_len, width, height, frame->format, quality, jpg_out, jpg_out_len);
+  Serial.println("fmt2jpg()");
+  bool res = fmt2jpg(frame->buf, frame_len, width, height, frame->format, quality, &jpg_out, &jpg_out_len);
   if (!res) {
     Serial.println("camera> CAPTURE FAIL");
     return;
@@ -133,7 +106,8 @@ void camera_publish(){
   String str_topic = config["camera"]["base_topic"];
   Serial.printf("mqtt> publishing on %s\n",str_topic.c_str());
   str_topic += "/jpg";//cannot be added in the function call as String overload is missing
-  mqtt.publish( str_topic.c_str(),reinterpret_cast<const char *>((*jpg_out)),(*jpg_out_len));
+  Serial.printf("publish on(%s) => len(%u)\r\n",str_topic.c_str(),jpg_out_len);
+  mqtt.publish( str_topic.c_str(),reinterpret_cast<const char *>(jpg_out),jpg_out_len,true,2);//LWMQTT_QOS2 = 2
 }
 
 void setup() {
@@ -150,19 +124,34 @@ void setup() {
   timelog("camera started");
 
   timelog("wifi setup");
-  mqtt_start(config);
+
+  Serial.print("connecting wifi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(1000);
+  }
+
+  mqtt.begin(config["mqtt"]["host"],config["mqtt"]["port"], wifi);
+  Serial.print("\nconnecting mqtt...");
+  while (!mqtt.connect(config["mqtt"]["client_id"])) {
+    Serial.print(".");
+    delay(1000);
+  }
+  Serial.println("\nconnected!");
+
 
   if(true){
     mqtt_publish_config();
+    mqtt.loop();
   }
-  timelog("setup() done");
 
-  mqtt_loop();
   camera_publish();
-  timelog("camera publish done");
-
+  mqtt.loop();
+  timelog("setup done");
 }
 
 void loop() {
-
+  delay(30000);
+  Serial.println("Nothing to do");
 }
