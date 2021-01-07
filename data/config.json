@@ -5,10 +5,9 @@
         "client_id":"esp_camera_lapse"
     },
     "camera":{
-        "width":800,
-        "height":600,
+        "frame_size":"QVGA",
         "buffer_count":2,
-        "jpeg_quality":80,
+        "jpeg_quality":90,
         "base_topic":"esp/camera"
     }
 }

@@ -91,8 +91,8 @@ void camera_start(DynamicJsonDocument &config){
   cam_config.xclk_freq_hz = 20000000;
   cam_config.pixel_format = PIXFORMAT_JPEG;
   cam_config.frame_size = FRAMESIZE_UXGA;
-  cam_config.jpeg_quality = 10;
-  cam_config.fb_count = 2;
+  cam_config.jpeg_quality = 10;//0-63 lower means higher quality
+  cam_config.fb_count = config["camera"]["buffer_count"];
  
   // camera init
   esp_err_t err = esp_camera_init(&cam_config);
@@ -107,8 +107,24 @@ void camera_start(DynamicJsonDocument &config){
   sensor->set_brightness(sensor, 1);//up the blightness just a bit
   sensor->set_saturation(sensor, -2);//lower the saturation
 
+  //(OV3660)	QXGA(2048x1536): 15fps / FHD(1080p): 20fps / HD(720p): 45fps / XGA(1024x768) : 45fps / VGA(640x480) : 60fps / QVGA(320x240) : 120fps
+  String frame_size = config["camera"]["frame_size"];
+  framesize_t fm_size = FRAMESIZE_QVGA;
+  if(frame_size.compareTo("QVGA") == 0){
+    fm_size = FRAMESIZE_QVGA;
+  }else if(frame_size.compareTo("VGA") == 0){
+    fm_size = FRAMESIZE_VGA;
+  }else if(frame_size.compareTo("XGA") == 0){
+    fm_size = FRAMESIZE_XGA;
+  }else if(frame_size.compareTo("HD") == 0){
+    fm_size = FRAMESIZE_HD;
+  }else if(frame_size.compareTo("FHD") == 0){
+    fm_size = FRAMESIZE_FHD;
+  }else if(frame_size.compareTo("QXGA") == 0){
+    fm_size = FRAMESIZE_QXGA;
+  }
+  sensor->set_framesize(sensor, fm_size);
   //drop down frame size for higher initial frame rate
-  sensor->set_framesize(sensor, FRAMESIZE_QVGA);
 
 }
 
@@ -121,26 +137,14 @@ void mqtt_publish_camera(){
       Serial.println("Camera capture failed");
   }
 
-  size_t frame_len = frame->width * frame->height * 3;
-  uint16_t width = frame->width;
-  uint16_t height = frame->height;
-  uint8_t quality = 50;
-  uint8_t * jpg_out;
-  size_t jpg_out_len;
-
-  timelog("fmt2jpg()");
-  bool res = fmt2jpg(frame->buf, frame_len, width, height, frame->format, quality, &jpg_out, &jpg_out_len);
-  if (!res) {
-    Serial.println("camera> CAPTURE FAIL");
-    return;
-  }
-
-  Serial.printf("camera> CAPTURE OK %dx%d %db\n", frame->width, frame->height, frame_len);
+  Serial.printf("camera> CAPTURE OK %dx%d %db\n", frame->width, frame->height, frame->len);
   String str_topic = config["camera"]["base_topic"];
-  str_topic += "/jpg_len";//cannot be added in the function call as String overload is missing
-  mqtt.publish( str_topic,String(jpg_out_len),true,2);//LWMQTT_QOS2 = 2
-  //mqtt.publish( str_topic.c_str(),reinterpret_cast<const char *>(jpg_out),jpg_out_len,true,2);//LWMQTT_QOS2 = 2
-  Serial.printf("published (%s) => len(%u)\r\n",str_topic.c_str(),jpg_out_len);
+  str_topic += "/jpg";//cannot be added in the function call as String overload is missing
+  const char* data = (const char*)frame->buf;
+  mqtt.publish( str_topic.c_str(),data,frame->len,true,2);//LWMQTT_QOS2 = 2
+  Serial.printf("published (%s) => len(%u)\r\n",str_topic.c_str(),frame->len);
+  str_topic += "_len";//cannot be added in the function call as String overload is missing
+  mqtt.publish( str_topic,String(frame->len),true,2);//LWMQTT_QOS2 = 2
 }
 
 void connect(){
@@ -176,7 +180,7 @@ void connect(){
 }
 
 void setup() {
-  const int sleep_time_sec = 30;
+  const int sleep_time_sec = 10;
 
   Serial.begin(115200);
   Serial.setDebugOutput(true);
