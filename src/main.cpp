@@ -1,10 +1,12 @@
 #include "Arduino.h"
 #include "esp_camera.h"
+#include "freertos/FreeRTOS.h"
 #include <WiFi.h>
 
 #include "camera_pins.h"
 #include "battery.h"
 #include "bmm8563.h"
+#include "led.h"
 
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -22,11 +24,19 @@ DynamicJsonDocument config(5*1024);//5 KB
 MQTTClient mqtt(30*1024);// 30KB for jpg images
 WiFiClient wifi;//needed to stay on global scope
 
+void task_delay_ms(int ms){
+  vTaskDelay(pdMS_TO_TICKS(ms));
+}
+
 void timelog(String Text){
   Serial.println(String(millis())+" : "+Text);//micros()
 }
 
-
+void blink(int duty, int duration_ms){
+  led_brightness(duty);
+  task_delay_ms(duration_ms);
+  led_brightness(0);
+}
 
 void mqtt_publish_config(){
   String str_config;
@@ -133,31 +143,13 @@ void mqtt_publish_camera(){
   Serial.printf("published (%s) => len(%u)\r\n",str_topic.c_str(),jpg_out_len);
 }
 
-void setup() {
-  
-  Serial.begin(115200);
-  Serial.setDebugOutput(true);
-  Serial.println();
-  timelog("Boot ready");
-  WiFi.begin(ssid, password);
-
-  bat_init();
-  bmm8563_init();
-  bmm8563_setTimerIRQ(30);//in sec
-
-  load_config(config,true);
-  timelog("config loaded");
-
-  camera_start(config);
-  timelog("camera started");
-
-  timelog("wifi setup");
-
-  Serial.print("checking wifi");
+void connect(){
+  timelog("wifi check");
   int max_timeout = 10;
   while ((WiFi.status() != WL_CONNECTED)&&(max_timeout>0)) {
     Serial.print(".");
-    delay(500);
+    blink(100,10);
+    task_delay_ms(490);
     max_timeout--;
   }
   Serial.print("\n");
@@ -171,7 +163,8 @@ void setup() {
   Serial.print("connecting mqtt");
   while ((!mqtt.connect(config["mqtt"]["client_id"]))&&(max_timeout>0)) {
     Serial.print(".");
-    delay(500);
+    blink(300,50);
+    task_delay_ms(450);
     max_timeout--;
   }
   if(max_timeout == 0){
@@ -180,28 +173,54 @@ void setup() {
   }
   Serial.print("\n");
   timelog("mqtt connected!\n");
+}
 
-  if(true){
-    mqtt_publish_config();
-    timelog("=>config");
-    mqtt_publish_battery();
-    timelog("=>battery");
-  }
+void setup() {
+  const int sleep_time_sec = 30;
 
-  mqtt_publish_camera();
-  timelog("=>camera");
-  mqtt_publish_time();
-  timelog("=>time");
+  Serial.begin(115200);
+  Serial.setDebugOutput(true);
+  Serial.println();
+  timelog("Boot ready");
+  WiFi.begin(ssid, password);
+
+  led_init(CAMERA_LED_GPIO);
+  led_brightness(0);
+  bat_init();
+  bmm8563_init();
+  bmm8563_setTimerIRQ(sleep_time_sec);//in sec
+
+  load_config(config,true);
+  timelog("config loaded");
+
+  camera_start(config);
+  timelog("camera started");
+
+  connect();
+
+  //mqtt_publish_config();  timelog("=>config");
+  mqtt_publish_battery();   timelog("=>battery");
+  mqtt_publish_camera();    timelog("=>camera");
+  mqtt_publish_time();      timelog("=>time");
   mqtt.loop();
   timelog("=>loop");
 
   timelog("setup done - disabling battery");
   Serial.flush();
   bat_disable_output();
-  delay(100);//dies here
+  task_delay_ms(100);//dies here
+
+  Serial.println("Still alive - usb power");
+  Serial.flush();
+
+  blink(512,1000);task_delay_ms(500);blink(512,1000);
+
+  Serial.println("ESP going to deep sleep");
+  esp_deep_sleep(sleep_time_sec*1000000);
+  esp_deep_sleep_start();
+
 }
 
 void loop() {
-  Serial.println("Cycling with usb power");
-  delay(30000);
+
 }
