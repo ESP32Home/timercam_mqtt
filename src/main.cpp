@@ -21,7 +21,7 @@
 #include "wifi_secret.h"
 
 DynamicJsonDocument config(5*1024);//5 KB
-MQTTClient mqtt(30*1024);// 30KB for jpg images
+MQTTClient mqtt(35*1024);// 40KB for jpg images
 WiFiClient wifi;//needed to stay on global scope
 
 void task_delay_ms(int ms){
@@ -46,7 +46,6 @@ void mqtt_publish_config(){
   mqtt.publish(str_topic,str_config,true,2);//LWMQTT_QOS2 = 2
   Serial.printf("published (%s)=>(%s)\r\n",str_topic.c_str(),str_config.c_str());
 }
-
 
 void mqtt_publish_time(){
   String str_topic = config["camera"]["base_topic"];
@@ -143,8 +142,6 @@ void mqtt_publish_camera(){
   const char* data = (const char*)frame->buf;
   mqtt.publish( str_topic.c_str(),data,frame->len,true,2);//LWMQTT_QOS2 = 2
   Serial.printf("published (%s) => len(%u)\r\n",str_topic.c_str(),frame->len);
-  str_topic += "_len";//cannot be added in the function call as String overload is missing
-  mqtt.publish( str_topic,String(frame->len),true,2);//LWMQTT_QOS2 = 2
 }
 
 void connect(){
