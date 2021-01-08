@@ -10,6 +10,6 @@
         "jpeg_quality":90,
         "base_topic":"esp/camera",
         "battery_sleep":300,
-        "usb_sleep":60
+        "usb_sleep":10
     }
 }

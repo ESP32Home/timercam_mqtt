@@ -181,28 +181,32 @@ void setup() {
   Serial.println();
   timelog("Boot ready");
   WiFi.begin(ssid, password);
-
   led_init(CAMERA_LED_GPIO);
   led_brightness(0);
   bat_init();
   load_config(config,true);
+  timelog("config loaded");
+  camera_start(config);
+  timelog("camera started");
+
   const int16_t battery_sleep = config["camera"]["battery_sleep"];
   const int16_t usb_sleep = config["camera"]["usb_sleep"];
   bmm8563_init();
   bmm8563_setTimerIRQ(battery_sleep);//in sec
 
-  timelog("config loaded");
 
 
   if(connect()){
-    camera_start(config);
-    timelog("camera started");
     mqtt_publish_camera();    timelog("=>camera");
+    mqtt.loop();
+    task_delay_ms(100);//allow mqtt and serial transmission
     mqtt_publish_status();    timelog("=>status");
     mqtt.loop();
+    task_delay_ms(100);//allow mqtt and serial transmission
   }
 
   timelog("setup done - disabling battery");
+  task_delay_ms(100);//allow mqtt and serial transmission
   Serial.flush();
   bat_disable_output();
   task_delay_ms(100);//dies here
