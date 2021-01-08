@@ -8,6 +8,8 @@
         "frame_size":"VGA",
         "buffer_count":2,
         "jpeg_quality":90,
-        "base_topic":"esp/camera"
+        "base_topic":"esp/camera",
+        "battery_sleep":300,
+        "usb_sleep":60
     }
 }

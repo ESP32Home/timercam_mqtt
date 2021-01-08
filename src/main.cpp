@@ -47,24 +47,18 @@ void mqtt_publish_config(){
   Serial.printf("published (%s)=>(%s)\r\n",str_topic.c_str(),str_config.c_str());
 }
 
-void mqtt_publish_time(){
+void mqtt_publish_status(){
   String str_topic = config["camera"]["base_topic"];
-  str_topic += "/wakeup";
+  str_topic += "/status";
   float time_f = millis();
   time_f /=1000;
   String str_wakeup = String(time_f);
-  mqtt.publish(str_topic,str_wakeup,true,2);//LWMQTT_QOS2 = 2
-  Serial.printf("published (%s)=>(%s)\r\n",str_topic.c_str(),str_wakeup.c_str());
-}
-
-void mqtt_publish_battery(){
-  String str_topic = config["camera"]["base_topic"];
-  str_topic += "/battery";
   float battery_f = bat_get_voltage();
   battery_f /=1000;
   String str_battery = String(battery_f);
-  mqtt.publish(str_topic,str_battery,true,2);//LWMQTT_QOS2 = 2
-  Serial.printf("published (%s)=>(%s)\r\n",str_topic.c_str(),str_battery.c_str());
+  String json_payload = "{\"battery\":"+str_battery+",\"wakeup\":"+str_wakeup+"}";
+  mqtt.publish(str_topic,json_payload,true,2);//LWMQTT_QOS2 = 2
+  Serial.printf("published (%s)=>(%s)\r\n",str_topic.c_str(),json_payload.c_str());
 }
 
 void camera_start(DynamicJsonDocument &config){
@@ -144,19 +138,20 @@ void mqtt_publish_camera(){
   Serial.printf("published (%s) => len(%u)\r\n",str_topic.c_str(),frame->len);
 }
 
-void connect(){
+bool connect(){
   timelog("wifi check");
   int max_timeout = 10;
   while ((WiFi.status() != WL_CONNECTED)&&(max_timeout>0)) {
     Serial.print(".");
-    blink(100,10);
-    task_delay_ms(490);
+    task_delay_ms(500);
     max_timeout--;
   }
   Serial.print("\n");
   if(max_timeout == 0){
     timelog("wifi timeout!");
-    return;
+    blink(200,10);task_delay_ms(200);
+    blink(200,10);task_delay_ms(200);
+    return false;
   }
   max_timeout = 10;
   timelog("wifi connected!");
@@ -170,14 +165,16 @@ void connect(){
   }
   if(max_timeout == 0){
     timelog("MQTT timeout!\n");
-    return;
+    blink(500,10);task_delay_ms(500);
+    blink(500,10);task_delay_ms(500);
+    return false;
   }
   Serial.print("\n");
   timelog("mqtt connected!\n");
+  return true;
 }
 
 void setup() {
-  const int sleep_time_sec = 10;
 
   Serial.begin(115200);
   Serial.setDebugOutput(true);
@@ -188,23 +185,22 @@ void setup() {
   led_init(CAMERA_LED_GPIO);
   led_brightness(0);
   bat_init();
-  bmm8563_init();
-  bmm8563_setTimerIRQ(sleep_time_sec);//in sec
-
   load_config(config,true);
+  const int16_t battery_sleep = config["camera"]["battery_sleep"];
+  const int16_t usb_sleep = config["camera"]["usb_sleep"];
+  bmm8563_init();
+  bmm8563_setTimerIRQ(battery_sleep);//in sec
+
   timelog("config loaded");
 
-  camera_start(config);
-  timelog("camera started");
 
-  connect();
-
-  //mqtt_publish_config();  timelog("=>config");
-  mqtt_publish_battery();   timelog("=>battery");
-  mqtt_publish_camera();    timelog("=>camera");
-  mqtt_publish_time();      timelog("=>time");
-  mqtt.loop();
-  timelog("=>loop");
+  if(connect()){
+    camera_start(config);
+    timelog("camera started");
+    mqtt_publish_camera();    timelog("=>camera");
+    mqtt_publish_status();    timelog("=>status");
+    mqtt.loop();
+  }
 
   timelog("setup done - disabling battery");
   Serial.flush();
@@ -217,7 +213,7 @@ void setup() {
   blink(512,1000);task_delay_ms(500);blink(512,1000);
 
   Serial.println("ESP going to deep sleep");
-  esp_deep_sleep(sleep_time_sec*1000000);
+  esp_deep_sleep(usb_sleep*1000000);
   esp_deep_sleep_start();
 
 }
